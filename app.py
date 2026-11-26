@@ -248,7 +248,7 @@ def _leer_filtros(vista, perfil):
 
 
 def _chips_activos(args, url_con):
-    """Filtros aplicados como chips con su "×" (patrón de Idealista/Airbnb):
+    """Filtros aplicados como chips con su "×" (patrón habitual de los portales):
     cada uno enlaza a la misma búsqueda sin ese filtro."""
     etiquetas = {
         "q": lambda v: f"«{v}»",

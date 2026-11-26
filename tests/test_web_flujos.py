@@ -349,10 +349,10 @@ class TestParametrosRaros:
         assert "Desde 800 €" in html and "Hasta 1.200 €" in html
 
     def test_valores_fuera_de_la_lista_quedan_seleccionados(self, con, web, piso):
-        html = web.get("/?precio_max=950&ciudad=Pueblo Borrado&portal=idealista").text
+        html = web.get("/?precio_max=950&ciudad=Pueblo Borrado&portal=habitaclia").text
         assert '<option value="950" selected>' in html
         assert '<option value="Pueblo Borrado" selected>' in html
-        assert '<option value="idealista" selected>' in html
+        assert '<option value="habitaclia" selected>' in html
 
 
 # --- Eficiencia ----------------------------------------------------------------
