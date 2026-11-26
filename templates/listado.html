@@ -1,0 +1,960 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, portal_nombre %}
+{% block title %}{{ titulo_vista }} — Piso Radar{% endblock %}
+
+{% block head %}
+<style>
+  /* --- Disposición: filtros a la izquierda, resultados a la derecha ---- */
+  :root { --seg-on: #ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --seg-on: #343a45; } }
+  .layout { display: grid; grid-template-columns: 272px minmax(0, 1fr); gap: 2rem; align-items: start; }
+
+  .layout--vacio { grid-template-columns: minmax(0, 1fr); }
+  .layout--vacio .filtros, .layout--vacio .toolbar, .layout--vacio .pills { display: none; }
+  .filtros { position: sticky; top: calc(var(--bar-h) + 1.5rem); max-height: calc(100vh - var(--bar-h) - 3rem); overflow: auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .filtros__cabecera { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.1rem .4rem; }
+  .filtros__cabecera h2 { font-size: 1rem; }
+  .filtros__cabecera a { font-size: .85rem; color: var(--brand-text); font-weight: 600; text-decoration: none; }
+  .filtros__cerrar { display: none; }
+  .filtros__cuerpo { padding: 0 1.1rem; }
+  .filtros__pie { display: none; }
+  .velo { display: none; }
+  .grupo { padding: 1rem 0; border-top: 1px solid var(--border); }
+  .grupo:first-child { border-top: 0; }
+  .grupo__titulo { display: block; font-size: .82rem; font-weight: 650; color: var(--text-2); margin-bottom: .55rem; }
+  .fila-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+
+  .field { width: 100%; padding: .58rem .7rem; border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+    background: var(--surface); font-size: .92rem; }
+  select.field { appearance: none; padding-right: 2rem; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right .6rem center; background-size: 16px; }
+  .field:hover { border-color: var(--text-3); }
+
+  /* Control segmentado (habitaciones, tipo) */
+  .seg { display: flex; padding: 3px; gap: 3px; background: var(--surface-2); border-radius: var(--radius-sm); }
+  .seg label { flex: 1; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg span { display: block; text-align: center; padding: .42rem .3rem; border-radius: 7px; font-size: .87rem; font-weight: 550; color: var(--text-2); cursor: pointer; }
+  .seg input:checked + span { background: var(--seg-on); color: var(--text); box-shadow: var(--shadow); font-weight: 650; }
+  .seg input:focus-visible + span { outline: 2px solid var(--brand); }
+
+  /* Interruptor */
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .35rem 0; cursor: pointer; font-size: .9rem; }
+  .switch input { appearance: none; flex: none; width: 38px; height: 22px; border-radius: 999px; background: var(--surface-3); position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+  .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+  .switch input:checked { background: var(--brand); }
+  .switch input:checked::after { transform: translateX(16px); }
+  .switch small { display: block; color: var(--text-3); font-size: .8rem; }
+
+  /* --- Cabecera de resultados ----------------------------------------- */
+  .resultados__cabecera { margin-bottom: 1rem; }
+  .resultados__cabecera h1 { font-size: 1.55rem; font-weight: 750; }
+  .resultados__resumen { margin: .3rem 0 0; color: var(--text-2); font-size: .93rem; }
+  .resultados__resumen a { color: var(--brand-text); font-weight: 600; }
+
+  .toolbar { display: flex; gap: .6rem; align-items: center; margin-bottom: .9rem; }
+  .buscador { position: relative; flex: 1; }
+  .buscador .i { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: var(--text-3); }
+  .buscador input { padding-left: 2.4rem; height: 2.75rem; border-radius: 999px; }
+  .toolbar .orden { width: auto; height: 2.75rem; border-radius: 999px; padding-left: 1rem; }
+  .btn-filtros { display: none; height: 2.75rem; border-radius: 999px; }
+  .btn-filtros .contador { background: var(--brand); color: #fff; }
+
+  .pills { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.25rem; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: .4rem; padding: .38rem .8rem; border-radius: 999px; border: 1px solid var(--border-strong);
+    background: var(--surface); font-size: .86rem; font-weight: 550; text-decoration: none; color: var(--text-2); white-space: nowrap; }
+  .pill:hover { border-color: var(--text-3); color: var(--text); }
+  .pill.activa { background: var(--text); border-color: var(--text); color: var(--surface); }
+  .pill .n { color: var(--text-3); font-weight: 600; }
+  .pill.activa .n { color: inherit; opacity: .7; }
+  .chip { display: inline-flex; align-items: center; gap: .3rem; padding: .32rem .45rem .32rem .75rem; border-radius: 999px; background: var(--brand-soft);
+    color: var(--brand-text); font-size: .84rem; font-weight: 600; text-decoration: none; }
+  .chip .i { width: .95em; height: .95em; }
+  .chip:hover { filter: brightness(.96); }
+  .pills .separador { width: 1px; height: 1.4rem; background: var(--border-strong); margin: 0 .2rem; }
+  .pills .limpiar { font-size: .85rem; color: var(--text-2); font-weight: 600; }
+
+  /* --- Rejilla de tarjetas -------------------------------------------- */
+  /* auto-fill colapsa sola a una columna en el móvil y reparte varias en
+     pantallas anchas, sin media queries. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 1.25rem; }
+
+  .listing { position: relative; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); transition: box-shadow .18s, transform .18s, opacity .25s; }
+  .listing:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); }
+  .listing.saliendo { opacity: 0; transform: scale(.97); }
+
+  .listing__media { position: relative; aspect-ratio: 4 / 3; background: var(--surface-2); overflow: hidden; display: block; width: 100%;
+    padding: 0; border: 0; cursor: pointer; }
+  .listing__media img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s ease; }
+  .listing:hover .listing__media img { transform: scale(1.035); }
+  .sin-foto { width: 100%; height: 100%; display: grid; place-items: center; color: var(--text-3); }
+  .sin-foto .i { width: 40px; height: 40px; stroke-width: 1.4; }
+  .listing.consultada .listing__media img { filter: saturate(.55) brightness(.92); }
+
+  .badges { position: absolute; top: .65rem; left: .65rem; display: flex; flex-wrap: wrap; gap: .35rem; pointer-events: none; max-width: calc(100% - 3.8rem); }
+  .badge { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .5rem; border-radius: 6px; font-size: .74rem; font-weight: 700;
+    background: rgba(255,255,255,.94); color: #15181d; box-shadow: 0 1px 3px rgba(0,0,0,.18); white-space: nowrap; }
+  .badge .i { width: .95em; height: .95em; stroke-width: 2.4; }
+  .badge-nuevo { background: #0f766e; color: #fff; }
+  .badge-bajada { background: #15803d; color: #fff; }
+  .badge-retirado { background: #3f3f46; color: #fff; }
+  .badge-visto { background: rgba(21,24,29,.75); color: #fff; }
+
+  .fav { position: absolute; top: .55rem; right: .55rem; width: 2.35rem; height: 2.35rem; border-radius: 50%; border: 0; cursor: pointer;
+    background: rgba(255,255,255,.94); color: #15181d; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.2); transition: transform .12s; }
+  .fav:hover { transform: scale(1.08); }
+  .fav:active { transform: scale(.92); }
+  .fav .i { width: 19px; height: 19px; }
+  .fav[aria-pressed="true"] { color: var(--heart); }
+  .fav[aria-pressed="true"] .i { fill: currentColor; }
+
+  .listing__body { padding: .9rem 1rem .6rem; display: flex; flex-direction: column; gap: .3rem; flex: 1; }
+  .precio { display: flex; align-items: baseline; flex-wrap: wrap; gap: .1rem .45rem; }
+  .precio strong { font-size: 1.28rem; font-weight: 750; letter-spacing: -0.02em; }
+  .precio .mes { color: var(--text-3); font-size: .88rem; }
+  .precio s { color: var(--text-3); font-size: .86rem; }
+  .facts { display: flex; flex-wrap: wrap; gap: .25rem .9rem; color: var(--text-2); font-size: .88rem; }
+  .facts span { display: inline-flex; align-items: center; gap: .3rem; }
+  .facts .i { color: var(--text-3); }
+  /* Certificado energético irlandés (BER): A verde ... G rojo, como en las etiquetas oficiales */
+  .ber { padding: 0 .4rem; border-radius: 4px; font-size: .78rem; font-weight: 700; color: #fff; background: #6b7280; }
+  .ber--a { background: #15803d; } .ber--b { background: #65a30d; } .ber--c { background: #ca8a04; }
+  .ber--d { background: #ea580c; } .ber--e, .ber--f, .ber--g { background: #dc2626; }
+  .listing__titulo { font-weight: 600; font-size: .95rem; text-decoration: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; margin-top: .15rem; }
+  .listing__titulo:hover { color: var(--brand-text); }
+  .listing.consultada .listing__titulo { color: var(--text-3); }
+  .ubicacion { display: flex; align-items: center; gap: .3rem; color: var(--text-3); font-size: .86rem; }
+  .ubicacion span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .listing__pie { display: flex; align-items: center; gap: .5rem; padding: .55rem .6rem .6rem 1rem; border-top: 1px solid var(--border);
+    font-size: .8rem; color: var(--text-3); margin-top: .35rem; }
+  .portal { display: inline-flex; align-items: center; gap: .35rem; font-weight: 600; color: var(--text-2); }
+  .portal::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--text-3)); }
+  .portal--fotocasa { --c: #2563eb; }
+  .portal--pisos-com { --c: #16a34a; }
+  .portal--habitaclia { --c: #ea580c; }
+  .portal--idealista { --c: #ca8a04; }
+  .portal--myhome { --c: #7c3aed; }
+  .portal--daft { --c: #dc2626; }
+  .portal--rent-ie { --c: #0891b2; }
+  .listing__pie .acciones { margin-left: auto; display: flex; gap: .1rem; }
+  .accion { width: 2rem; height: 2rem; border-radius: 50%; border: 0; background: none; color: var(--text-3); cursor: pointer; display: grid; place-items: center; }
+  .accion:hover { background: var(--surface-2); color: var(--text); }
+
+  /* --- Paginación ------------------------------------------------------ */
+  .paginacion { display: flex; justify-content: center; align-items: center; gap: .3rem; margin: 2.5rem 0 1rem; flex-wrap: wrap; }
+  .paginacion a, .paginacion span { min-width: 2.4rem; height: 2.4rem; padding: 0 .6rem; display: inline-flex; align-items: center; justify-content: center;
+    gap: .3rem; border-radius: var(--radius-sm); text-decoration: none; font-weight: 600; font-size: .92rem; color: var(--text-2); }
+  .paginacion a:hover { background: var(--surface-2); color: var(--text); }
+  .paginacion .actual { background: var(--text); color: var(--surface); }
+  .paginacion .paginacion__desactivado { opacity: .35; }
+  .paginacion .hueco { min-width: 1.2rem; }
+
+  /* --- Vista rápida (cajón lateral; hoja a pantalla completa en el móvil) */
+  .drawer { padding: 0; border: 0; margin: 0 0 0 auto; width: min(520px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); }
+  .drawer[open] { display: flex; flex-direction: column; animation: drawer-in .22s ease-out; }
+  .drawer::backdrop { background: var(--overlay); backdrop-filter: blur(2px); }
+  @keyframes drawer-in { from { transform: translateX(40px); opacity: 0; } }
+  .drawer__barra { display: flex; align-items: center; gap: .25rem; padding: .6rem .75rem; border-bottom: 1px solid var(--border); }
+  .drawer__barra .pos { margin-right: auto; padding-left: .4rem; font-size: .85rem; color: var(--text-3); font-weight: 600; }
+  .drawer__scroll { flex: 1; overflow: auto; }
+  .drawer__foto { position: relative; aspect-ratio: 16 / 10; background: var(--surface-2); }
+  .drawer__foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .drawer__contenido { padding: 1.25rem 1.4rem 1.5rem; display: flex; flex-direction: column; gap: .7rem; }
+  .drawer .precio strong { font-size: 1.7rem; }
+  .drawer h2 { font-size: 1.15rem; font-weight: 650; }
+  .datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: .5rem; margin: .4rem 0; }
+  .dato { padding: .7rem .8rem; border-radius: var(--radius-sm); background: var(--surface-2); }
+  .dato b { display: block; font-size: 1.02rem; }
+  .dato small { color: var(--text-3); font-size: .78rem; }
+  .descripcion { white-space: pre-line; color: var(--text-2); font-size: .93rem; line-height: 1.6; margin: 0; }
+  .descripcion.recortada { display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
+  .leer-mas { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--brand-text); font-weight: 650; cursor: pointer; }
+  .meta-lista { display: grid; gap: .45rem; padding: .9rem 0 0; border-top: 1px solid var(--border); font-size: .87rem; color: var(--text-2); }
+  .meta-lista div { display: flex; align-items: center; gap: .55rem; }
+  .meta-lista .i { color: var(--text-3); }
+  .drawer__acciones { display: flex; gap: .5rem; padding: .85rem 1rem calc(.85rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--surface); }
+  .drawer__acciones .btn:first-child { flex: 1; }
+  .drawer__acciones .btn-fav[aria-pressed="true"] { color: var(--heart); border-color: color-mix(in srgb, var(--heart) 45%, transparent); }
+  .drawer__acciones .btn-fav[aria-pressed="true"] .i { fill: currentColor; }
+
+  /* --- Móvil y tablet: los filtros pasan a una hoja inferior ---------- */
+  @media (max-width: 960px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .btn-filtros { display: inline-flex; }
+    .filtros { position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; top: auto; max-height: 88dvh; border-radius: 18px 18px 0 0;
+      display: flex; flex-direction: column; transform: translateY(105%); transition: transform .25s ease; visibility: hidden; overflow: hidden; border: 0; }
+    body.filtros-abiertos .filtros { transform: none; visibility: visible; }
+    body.filtros-abiertos { overflow: hidden; }
+    .velo { display: block; position: fixed; inset: 0; z-index: 45; background: var(--overlay); opacity: 0; pointer-events: none; transition: opacity .25s; }
+    body.filtros-abiertos .velo { opacity: 1; pointer-events: auto; }
+    .filtros__cabecera { padding: 1rem 1.1rem .8rem; border-bottom: 1px solid var(--border); }
+    .filtros__cabecera a { display: none; }
+    .filtros__cerrar { display: grid; }
+    .filtros__cuerpo { overflow: auto; flex: 1; }
+    .filtros__pie { display: flex; gap: .6rem; padding: .8rem 1.1rem calc(.8rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
+    .filtros__pie .btn:last-child { flex: 1; }
+  }
+  @media (max-width: 760px) {
+    .resultados__cabecera h1 { font-size: 1.3rem; }
+    .toolbar { flex-wrap: wrap; }
+    .buscador { flex-basis: 100%; }
+    .toolbar .orden { flex: 1; min-width: 0; }
+    .drawer { width: 100vw; }
+    .datos { grid-template-columns: 1fr 1fr; }
+    .drawer[open] { animation-name: sheet-in; }
+    @keyframes sheet-in { from { transform: translateY(40px); opacity: 0; } }
+    .grid { gap: 1rem; }
+    .pills { flex-wrap: nowrap; overflow-x: auto; margin: 0 -1rem 1rem; padding: 0 1rem; scrollbar-width: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set es_index = vista == 'index' %}
+{# Vista vacía sin filtros: solo el mensaje, sin panel ni barra de herramientas. #}
+{% set solo_vacio = total_pisos == 0 and not chips %}
+<div class="velo" data-cerrar-filtros></div>
+<div class="layout {% if solo_vacio %}layout--vacio{% endif %}">
+
+  {# ===== Panel de filtros ===== #}
+  <form method="get" action="{{ url_for(vista) }}" class="filtros" id="filtros" aria-label="Filtros">
+    <div class="filtros__cabecera">
+      <h2>Filtros</h2>
+      {% if n_filtros_panel %}<a href="{{ url_for(vista, **({'q': args.q} if args.q else {})) }}">Borrar</a>{% endif %}
+      <button type="button" class="btn btn-ghost btn-icon filtros__cerrar" data-cerrar-filtros aria-label="Cerrar filtros">{{ icon("x") }}</button>
+    </div>
+    <div class="filtros__cuerpo">
+      {% if args.novedades %}<input type="hidden" name="novedades" value="1">{% endif %}
+      {% if args.bajadas %}<input type="hidden" name="bajadas" value="1">{% endif %}
+
+      <div class="grupo">
+        <span class="grupo__titulo">Precio al mes</span>
+        <div class="fila-2">
+          <select name="precio_min" class="field" aria-label="Precio mínimo">
+            <option value="">Mín.</option>
+            {% for p in precios %}<option value="{{ p }}" {% if args.precio_min == p %}selected{% endif %}>{{ p | euros }}</option>{% endfor %}
+          </select>
+          <select name="precio_max" class="field" aria-label="Precio máximo">
+            <option value="">Máx.</option>
+            {% for p in precios %}<option value="{{ p }}" {% if args.precio_max == p %}selected{% endif %}>{{ p | euros }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="grupo">
+        <span class="grupo__titulo">Habitaciones</span>
+        <div class="seg" role="radiogroup" aria-label="Habitaciones">
+          {% for valor, etiqueta in opciones_hab %}
+          <label><input type="radio" name="hab" value="{{ valor }}" {% if (args.hab or "") | string == valor %}checked{% endif %}><span>{{ etiqueta }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if tipos | length > 1 %}
+      <div class="grupo">
+        <span class="grupo__titulo">Tipo de vivienda</span>
+        <div class="seg" role="radiogroup" aria-label="Tipo de vivienda">
+          <label><input type="radio" name="tipo" value="" {% if not args.tipo %}checked{% endif %}><span>Todos</span></label>
+          {% for t in tipos %}
+          <label><input type="radio" name="tipo" value="{{ t }}" {% if args.tipo == t %}checked{% endif %}><span>{{ t }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="grupo">
+        <label class="grupo__titulo" for="f-ciudad">Municipio</label>
+        <select name="ciudad" id="f-ciudad" class="field">
+          <option value="">Toda {{ perfil.region }}</option>
+          {% for c in ciudades %}<option value="{{ c }}" {% if c == args.ciudad %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div class="grupo">
+        <label class="grupo__titulo" for="f-portal">Portal</label>
+        <select name="portal" id="f-portal" class="field">
+          <option value="">Todos los portales</option>
+          {% for p in portales %}<option value="{{ p }}" {% if p == args.portal %}selected{% endif %}>{{ portal_nombre(p) }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div class="grupo">
+        <label class="switch">
+          <span>Ocultar los que ya he visto</span>
+          <input type="checkbox" name="no_vistos" value="1" {% if args.no_vistos %}checked{% endif %}>
+        </label>
+        {% if es_index %}
+        <label class="switch">
+          <span>Incluir no disponibles<small>Ya no aparecen en el portal. Se borran a los 7 días, salvo favoritos</small></span>
+          <input type="checkbox" name="retirados" value="1" {% if args.retirados %}checked{% endif %}>
+        </label>
+        {% endif %}
+      </div>
+    </div>
+    <div class="filtros__pie">
+      <a class="btn btn-secondary" href="{{ url_for(vista) }}">Borrar todo</a>
+      <button type="submit" class="btn">Ver resultados</button>
+    </div>
+  </form>
+
+  {# ===== Resultados ===== #}
+  <section class="resultados" aria-labelledby="titulo-resultados">
+    <div class="resultados__cabecera">
+      <h1 id="titulo-resultados">
+        {% if vista == 'favoritos' %}Tus favoritos{% elif vista == 'descartados' %}Descartados{% else %}Alquiler en {{ perfil.region }}{% endif %}
+      </h1>
+      <p class="resultados__resumen">
+        <strong data-total>{{ total_pisos }}</strong> vivienda{{ "s" if total_pisos != 1 }}
+        {%- if vista == 'favoritos' %} guardada{{ "s" if total_pisos != 1 }}{% elif vista == 'descartados' %} descartada{{ "s" if total_pisos != 1 }}{% else %} disponible{{ "s" if total_pisos != 1 }}{% endif %}
+        {%- if n_retirados %} · <a href="{{ url_con(retirados=1) }}">mostrar {{ n_retirados }} no disponibles</a>{% endif %}
+      </p>
+    </div>
+
+    {% if es_index %}
+    {% for e in portales_caidos %}
+    <div class="alert alert-warning" role="alert">
+      {{ icon("alert") }}
+      <div><strong>{{ portal_nombre(e.portal) }} no está devolviendo anuncios</strong>
+        {%- if e.ultima_ok_relativa %} desde {{ e.ultima_ok_relativa }}{% endif %}.
+        Sus anuncios guardados se siguen mostrando, pero no se actualizan.</div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="toolbar">
+      <label class="buscador">
+        <span class="sr-only">Buscar</span>
+        {{ icon("search") }}
+        <input type="search" name="q" form="filtros" class="field" value="{{ args.q or '' }}" placeholder="Busca calle, barrio, pueblo o palabra clave" enterkeyhint="search">
+      </label>
+      <button type="button" class="btn btn-secondary btn-filtros" data-abrir-filtros>
+        {{ icon("sliders") }} Filtros {% if n_filtros_panel %}<span class="contador">{{ n_filtros_panel }}</span>{% endif %}
+      </button>
+      <select name="orden_dir" form="filtros" class="field orden" aria-label="Ordenar por">
+        {% for valor, etiqueta in opciones_orden %}
+        <option value="{{ valor }}" {% if valor == orden_dir_activo %}selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="pills">
+      <a class="pill {% if args.novedades %}activa{% endif %}" href="{{ url_con(novedades=None if args.novedades else 1) }}">
+        {{ icon("sparkles") }} Novedades <span class="n">{{ n_novedades }}</span></a>
+      <a class="pill {% if args.bajadas %}activa{% endif %}" href="{{ url_con(bajadas=None if args.bajadas else 1) }}">
+        {{ icon("trend-down") }} Bajadas de precio <span class="n">{{ n_bajadas }}</span></a>
+      {% set chips_panel = chips | rejectattr("clave", "in", ["novedades", "bajadas"]) | list %}
+      {% if chips_panel %}
+      <span class="separador"></span>
+      {% for c in chips_panel %}
+      <a class="chip" href="{{ c.url }}" aria-label="Quitar filtro {{ c.etiqueta }}">{{ c.etiqueta }} {{ icon("x") }}</a>
+      {% endfor %}
+      {% if chips_panel | length > 1 %}<a class="limpiar" href="{{ url_for(vista) }}">Borrar todo</a>{% endif %}
+      {% endif %}
+    </div>
+
+    {% if filas %}
+    <div class="grid" id="grid">
+      {% for f in filas %}
+      <article class="listing {% if f.consultado %}consultada{% endif %}" id="fila-{{ f.id }}" data-idx="{{ loop.index0 }}">
+        <button type="button" class="listing__media" data-abrir="{{ loop.index0 }}" aria-label="Vista rápida: {{ f.titulo }}">
+          {% if f.imagen %}
+          <img src="{{ f.imagen }}" loading="lazy" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(document.getElementById('tpl-sin-foto').content.cloneNode(true))">
+          {% else %}
+          <span class="sin-foto">{{ icon("image") }}</span>
+          {% endif %}
+          <span class="badges">
+            {% if not f.disponible %}<span class="badge badge-retirado">No disponible</span>{% endif %}
+            {% if f.nuevo %}<span class="badge badge-nuevo">Nuevo</span>{% endif %}
+            {% if f.bajada %}<span class="badge badge-bajada">{{ icon("trend-down") }} −{{ f.bajada | euros }}</span>{% endif %}
+            {% if f.consultado %}<span class="badge badge-visto" data-badge-visto>{{ icon("eye") }} Visto</span>{% endif %}
+          </span>
+        </button>
+        <button type="button" class="fav" data-fav="{{ f.id }}" aria-pressed="{{ 'true' if f.favorito else 'false' }}"
+                aria-label="Guardar en favoritos" title="Guardar en favoritos">{{ icon("heart") }}</button>
+
+        <div class="listing__body">
+          <div class="precio">
+            <strong>{{ f.precio | euros if f.precio else 'A consultar' }}</strong>{% if f.precio %}<span class="mes">/mes</span>{% endif %}
+            {% if f.bajada %}<s>{{ f.precio_anterior | euros }}</s>{% endif %}
+          </div>
+          <div class="facts">
+            {% if f.habitaciones %}<span>{{ icon("bed") }} {{ f.habitaciones }} hab.</span>{% endif %}
+            {% if f.m2 %}<span>{{ icon("area") }} {{ f.m2 }} m²</span>{% endif %}
+            {% if f.tipo %}<span>{{ icon("home") }} {{ f.extra.tipo_portal or f.tipo }}</span>{% endif %}
+            {% if f.extra.banos %}<span>{{ icon("bath") }} {{ f.extra.banos }}</span>{% endif %}
+            {% if f.extra.ber %}<span class="ber ber--{{ f.extra.ber[0] | lower }}" title="Certificado energético (BER)">BER {{ f.extra.ber }}</span>{% endif %}
+            {% if f.extra.particular %}<span title="Lo alquila directamente el propietario">Particular</span>{% endif %}
+          </div>
+          <a class="listing__titulo titulo" href="{{ f.url }}" target="_blank" rel="noopener" data-piso-id="{{ f.id }}" data-abrir="{{ loop.index0 }}">{{ f.titulo }}</a>
+          {% set lugar = [f.zona, f.ciudad] | select | unique | join(', ') %}
+          {% if lugar %}<div class="ubicacion">{{ icon("pin") }}<span>{{ lugar }}</span></div>{% endif %}
+        </div>
+
+        <footer class="listing__pie">
+          <span class="portal portal--{{ f.portal | replace('.', '-') }}">{{ portal_nombre(f.portal) }}</span>
+          <span>· {{ f.fecha_relativa }}</span>
+          <span class="acciones">
+            {% if vista == 'descartados' %}
+            <button type="button" class="accion" data-descartar="{{ f.id }}" data-valor="0" title="Recuperar" aria-label="Recuperar">{{ icon("undo") }}</button>
+            {% else %}
+            <button type="button" class="accion" data-descartar="{{ f.id }}" data-valor="1" title="Descartar: no me interesa" aria-label="Descartar">{{ icon("ban") }}</button>
+            {% endif %}
+            <a class="accion" href="{{ f.url }}" target="_blank" rel="noopener" data-ir="{{ f.id }}" title="Abrir en {{ portal_nombre(f.portal) }}" aria-label="Abrir en {{ portal_nombre(f.portal) }}">{{ icon("external") }}</a>
+          </span>
+        </footer>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if total_paginas > 1 %}
+    {# Se muestra (desde el JS) si se vacía esta página quitando anuncios pero quedan más. #}
+    <div class="empty" id="vacio-pagina" hidden>
+      <div class="empty__icono">{{ icon("search") }}</div>
+      <h2>Has revisado esta página</h2>
+      <p>Quedan más viviendas en otras páginas.</p>
+      <a class="btn" href="{{ url_pagina(pagina) }}" data-recargar>Ver más</a>
+    </div>
+    {% endif %}
+
+    <div class="empty" id="vacio" {% if filas %}hidden{% endif %}>
+      {% if vista == 'favoritos' and not chips %}
+      <div class="empty__icono">{{ icon("heart") }}</div>
+      <h2>Aún no tienes favoritos</h2>
+      <p>Pulsa el corazón de cualquier anuncio para guardarlo aquí. Te avisaremos por ntfy si cambia de precio.</p>
+      <a class="btn" href="{{ url_for('index') }}">Explorar viviendas</a>
+      {% elif vista == 'descartados' and not chips %}
+      <div class="empty__icono">{{ icon("ban") }}</div>
+      <h2>No has descartado nada</h2>
+      <p>Lo que descartes desaparece de Explorar y se queda aquí por si cambias de idea.</p>
+      <a class="btn btn-secondary" href="{{ url_for('index') }}">Volver a Explorar</a>
+      {% else %}
+      <div class="empty__icono">{{ icon("search") }}</div>
+      <h2>Ninguna vivienda coincide</h2>
+      <p>Prueba a quitar algún filtro o a ampliar el rango de precio.</p>
+      <a class="btn btn-secondary" href="{{ url_for(vista) }}">Borrar filtros</a>
+      {% endif %}
+    </div>
+
+    {% if total_paginas > 1 %}
+    <nav class="paginacion" data-pagina="{{ pagina }}" data-ajuste="{{ ajuste }}">
+      {% if pagina > 1 %}
+      <a href="{{ url_pagina(pagina - 1) }}" aria-label="Página anterior">{{ icon("chev-left") }} Anterior</a>
+      {% else %}
+      <span class="paginacion__desactivado">{{ icon("chev-left") }} Anterior</span>
+      {% endif %}
+      {% for n in paginas_visibles %}
+        {% if n is none %}<span class="hueco">…</span>
+        {% elif n == pagina %}<span class="actual" aria-current="page">{{ n }}</span>
+        {% else %}<a href="{{ url_pagina(n) }}">{{ n }}</a>{% endif %}
+      {% endfor %}
+      {% if pagina < total_paginas %}
+      <a href="{{ url_pagina(pagina + 1) }}" aria-label="Página siguiente">Siguiente {{ icon("chev-right") }}</a>
+      {% else %}
+      <span class="paginacion__desactivado">Siguiente {{ icon("chev-right") }}</span>
+      {% endif %}
+    </nav>
+    {% endif %}
+  </section>
+</div>
+
+<template id="tpl-sin-foto"><span class="sin-foto">{{ icon("image") }}</span></template>
+
+{# ===== Vista rápida ===== #}
+<dialog class="drawer" id="drawer" aria-label="Detalle del anuncio">
+  <div class="drawer__barra">
+    <span class="pos" id="d-pos"></span>
+    <button type="button" class="btn btn-ghost btn-icon" id="d-prev" aria-label="Anterior" title="Anterior (←)">{{ icon("chev-left") }}</button>
+    <button type="button" class="btn btn-ghost btn-icon" id="d-next" aria-label="Siguiente" title="Siguiente (→)">{{ icon("chev-right") }}</button>
+    <button type="button" class="btn btn-ghost btn-icon" id="d-cerrar" aria-label="Cerrar" title="Cerrar (Esc)">{{ icon("x") }}</button>
+  </div>
+  <div class="drawer__scroll">
+    <div class="drawer__foto" id="d-foto"></div>
+    <div class="drawer__contenido">
+      <div class="precio" id="d-precio"></div>
+      <h2 id="d-titulo"></h2>
+      <div class="ubicacion" id="d-ubicacion">{{ icon("pin") }}<span></span></div>
+      <div class="datos" id="d-datos"></div>
+      <p class="descripcion recortada" id="d-descripcion"></p>
+      <button type="button" class="leer-mas" id="d-leer-mas">Leer más</button>
+      <div class="meta-lista">
+        <div id="d-portal"></div>
+        <div>{{ icon("clock") }}<span id="d-fecha"></span></div>
+        <div id="d-estado"></div>
+      </div>
+    </div>
+  </div>
+  <div class="drawer__acciones">
+    <a class="btn" id="d-ir" href="#" target="_blank" rel="noopener">{{ icon("external") }} <span></span></a>
+    <button type="button" class="btn btn-secondary btn-icon btn-fav" id="d-fav" aria-pressed="false" aria-label="Guardar en favoritos" title="Guardar en favoritos">{{ icon("heart") }}</button>
+    <button type="button" class="btn btn-secondary btn-icon" id="d-visto" title="Marcar como no visto" aria-label="Marcar como no visto">{{ icon("eye-off") }}</button>
+    <button type="button" class="btn btn-secondary btn-icon" id="d-descartar"></button>
+  </div>
+</dialog>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  const VISTA = {{ vista | tojson }};
+  const URLS = {
+    consultado: {{ url_for('marcar_consultado') | tojson }},
+    favorito: {{ url_for('marcar_favorito') | tojson }},
+    descartado: {{ url_for('marcar_descartado') | tojson }},
+  };
+  const NOMBRES_PORTAL = {"fotocasa": "Fotocasa", "pisos.com": "pisos.com", "habitaclia": "Habitaclia", "idealista": "Idealista",
+                          "myhome": "MyHome", "daft": "Daft", "rent.ie": "Rent.ie"};
+  const PISOS = {{ datos_js | tojson }};
+  const porId = new Map(PISOS.map(function (p) { return [p.id, p]; }));
+
+  const $ = function (sel, el) { return (el || document).querySelector(sel); };
+  const icono = function (nombre) { return '<svg class="i" aria-hidden="true"><use href="#i-' + nombre + '"/></svg>'; };
+  const euros = function (n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " €"; };
+  const tarjeta = function (id) { return document.getElementById("fila-" + id); };
+  const nombrePortal = function (p) { return NOMBRES_PORTAL[p] || p; };
+
+  // Las peticiones de un mismo anuncio van en cola: con dos clics rápidos
+  // (marcar y desmarcar) el servidor, que atiende en paralelo, podía aplicar
+  // la segunda antes que la primera y quedarse con el estado contrario al
+  // que se ve en pantalla.
+  const colas = new Map();
+  function guardar(campo, id, valor) {
+    const enviar = async function () {
+      const body = new URLSearchParams({ piso_id: id, [campo]: valor ? "1" : "0" });
+      const r = await fetch(URLS[campo], {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Piso-Radar": "1" },
+        body: body,
+      });
+      if (!r.ok) {
+        let mensaje = null;
+        try { mensaje = (await r.json()).error; } catch (e) { /* respuesta sin JSON */ }
+        const err = new Error("fallo al guardar");
+        err.mensaje = r.status === 404 ? mensaje : null;
+        throw err;
+      }
+    };
+    const anterior = colas.get(id) || Promise.resolve();
+    const esta = anterior.catch(function () {}).then(enviar);
+    colas.set(id, esta);
+    return esta;
+  }
+
+  // --- Toasts ---------------------------------------------------------------
+  function toast(texto, opciones) {
+    opciones = opciones || {};
+    const el = document.createElement("div");
+    el.className = "toast" + (opciones.error ? " error" : "");
+    const span = document.createElement("span");
+    span.textContent = texto;
+    el.appendChild(span);
+    if (opciones.accion) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = opciones.accion;
+      b.addEventListener("click", function () { el.remove(); opciones.fn(); });
+      el.appendChild(b);
+    }
+    const cont = $("#toasts");
+    while (cont.children.length >= 2) cont.firstChild.remove();
+    cont.appendChild(el);
+    setTimeout(function () { el.remove(); }, opciones.accion ? 6000 : 3000);
+  }
+  const fallo = function (e) {
+    toast((e && e.mensaje) || "No se pudo guardar el cambio. Inténtalo de nuevo.", { error: true });
+  };
+
+  function ajustarContador(nombre, delta) {
+    document.querySelectorAll('[data-contador="' + nombre + '"]').forEach(function (el) {
+      const n = Math.max(0, (parseInt(el.textContent, 10) || 0) + delta);
+      el.textContent = n;
+      // El de Favoritos de la barra superior se ve siempre; el resto, solo si hay algo.
+      if (!el.closest(".nav") || nombre !== "favoritos") el.hidden = n === 0;
+    });
+  }
+
+  // --- Tarjetas que salen/vuelven de la rejilla (con "Deshacer") -----------
+  // "fuera" = anuncios de esta página que ya no cumplen la vista (descartados,
+  // quitados de favoritos, vistos con "ocultar vistos"...). Con eso se ajusta
+  // el total mostrado y la paginación (ver db.listar_pisos, ajuste).
+  const fuera = new Set();
+  const OCULTAR_VISTOS = {{ (args.no_vistos is defined and args.no_vistos) | tojson }};
+  function sacar(id) {
+    if (fuera.has(id)) return;
+    fuera.add(id);
+    actualizarResumen();
+  }
+  function devolver(id) {
+    if (!fuera.delete(id)) return;
+    actualizarResumen();
+  }
+  function quitarTarjeta(id) {
+    const t = tarjeta(id);
+    if (!t) return;
+    sacar(id);
+    t.classList.add("saliendo");
+    setTimeout(function () { if (fuera.has(id)) { t.hidden = true; comprobarVacio(); } }, 250);
+  }
+  function restaurarTarjeta(id) {
+    const t = tarjeta(id);
+    if (!t) return;
+    devolver(id);
+    t.hidden = false;
+    requestAnimationFrame(function () { t.classList.remove("saliendo"); });
+    comprobarVacio();
+  }
+  const TOTAL_INICIAL = {{ total_pisos | tojson }};
+  function actualizarResumen() {
+    const el = $("[data-total]");
+    if (el) el.textContent = Math.max(0, TOTAL_INICIAL - fuera.size);
+  }
+  function comprobarVacio() {
+    const quedan = document.querySelectorAll(".listing:not([hidden])").length;
+    const masPaginas = $("#vacio-pagina");
+    // Si quedan anuncios en otras páginas, "Ninguna vivienda coincide" sería
+    // mentira: se ofrece cargar las siguientes.
+    const hayMas = masPaginas && TOTAL_INICIAL - fuera.size > 0;
+    if (masPaginas) masPaginas.hidden = quedan > 0 || !hayMas;
+    $("#vacio").hidden = quedan > 0 || hayMas;
+  }
+  // La paginación lleva cuántos anuncios han salido de páginas anteriores,
+  // para que al pasar de página no se salten los que suben a ocupar su hueco.
+  const paginacion = $(".paginacion");
+  function urlConAjuste(href) {
+    const url = new URL(href, location.href);
+    const destino = parseInt(url.searchParams.get("pagina") || "1", 10);
+    const actual = paginacion ? parseInt(paginacion.dataset.pagina, 10) : 1;
+    if (destino > actual) {
+      const base = paginacion ? parseInt(paginacion.dataset.ajuste, 10) || 0 : 0;
+      if (base + fuera.size > 0) url.searchParams.set("ajuste", base + fuera.size);
+    }
+    return url.toString();
+  }
+  document.addEventListener("click", function (e) {
+    const a = e.target.closest(".paginacion a, a[data-recargar]");
+    if (!a || !fuera.size) return;
+    e.preventDefault();
+    location.href = a.matches("[data-recargar]") ? location.href : urlConAjuste(a.href);
+  });
+
+  // --- Estado visual ----------------------------------------------------------
+  function pintarFavorito(id) {
+    const p = porId.get(id);
+    document.querySelectorAll('[data-fav="' + id + '"]').forEach(function (b) { b.setAttribute("aria-pressed", p.favorito); });
+    if (drawerId() === id) $("#d-fav").setAttribute("aria-pressed", p.favorito);
+  }
+  function pintarVisto(id) {
+    const p = porId.get(id), t = tarjeta(id);
+    if (t) {
+      t.classList.toggle("consultada", p.consultado);
+      const badge = t.querySelector("[data-badge-visto]");
+      if (p.consultado && !badge) {
+        const b = document.createElement("span");
+        b.className = "badge badge-visto";
+        b.dataset.badgeVisto = "";
+        b.innerHTML = icono("eye") + " Visto";
+        t.querySelector(".badges").appendChild(b);
+      } else if (!p.consultado && badge) {
+        badge.remove();
+      }
+    }
+    if (drawerId() === id) pintarDrawer();
+  }
+
+  // --- Acciones ---------------------------------------------------------------
+  async function alternarFavorito(id) {
+    const p = porId.get(id), nuevo = !p.favorito;
+    p.favorito = nuevo;
+    pintarFavorito(id);
+    ajustarContador("favoritos", nuevo ? 1 : -1);
+    try {
+      await guardar("favorito", id, nuevo);
+    } catch (e) {
+      p.favorito = !nuevo;
+      pintarFavorito(id);
+      ajustarContador("favoritos", nuevo ? -1 : 1);
+      return fallo(e);
+    }
+    if (VISTA === "descartados" && nuevo) {
+      // Guardar un descartado lo recupera (lo hace el servidor): sale de aquí.
+      cerrarDrawerSi(id);
+      quitarTarjeta(id);
+      ajustarContador("descartados", -1);
+      toast("Guardado en favoritos y recuperado");
+      return;
+    }
+    if (VISTA === "favoritos" && !nuevo) {
+      cerrarDrawerSi(id);
+      quitarTarjeta(id);
+      toast("Quitado de favoritos", { accion: "Deshacer", fn: function () { alternarFavorito(id).then(function () { restaurarTarjeta(id); }); } });
+    } else {
+      toast(nuevo ? "Guardado en favoritos" : "Quitado de favoritos");
+    }
+  }
+
+  async function descartar(id, valor) {
+    const p = porId.get(id), eraFavorito = p.favorito;
+    cerrarDrawerSi(id);
+    quitarTarjeta(id);
+    try {
+      await guardar("descartado", id, valor);
+    } catch (e) {
+      restaurarTarjeta(id);
+      return fallo(e);
+    }
+    ajustarContador("descartados", valor ? 1 : -1);
+    if (valor && eraFavorito) {
+      // Descartar también quita de favoritos (lo hace el servidor).
+      p.favorito = false;
+      pintarFavorito(id);
+      ajustarContador("favoritos", -1);
+    }
+    toast(valor ? "Descartado: ya no saldrá en Explorar" : "Recuperado: vuelve a salir en Explorar", {
+      accion: "Deshacer",
+      fn: async function () {
+        try {
+          await guardar("descartado", id, !valor);
+          if (valor && eraFavorito) {
+            await guardar("favorito", id, true);
+            p.favorito = true;
+            pintarFavorito(id);
+            ajustarContador("favoritos", 1);
+          }
+          ajustarContador("descartados", valor ? -1 : 1);
+          restaurarTarjeta(id);
+        } catch (e) { fallo(e); }
+      },
+    });
+  }
+
+  async function marcarVisto(id, valor) {
+    const p = porId.get(id);
+    if (p.consultado === valor) return;
+    p.consultado = valor;
+    pintarVisto(id);
+    // Con "ocultar vistos" activo, uno visto ya no es de esta lista aunque
+    // siga en pantalla: cuenta para el total y para la paginación.
+    if (OCULTAR_VISTOS) (valor ? sacar : devolver)(id);
+    try {
+      await guardar("consultado", id, valor);
+    } catch (e) {
+      p.consultado = !valor;
+      pintarVisto(id);
+      if (OCULTAR_VISTOS) (valor ? devolver : sacar)(id);
+      // Al abrir el portal la pestaña nueva se abre igual: no hace falta
+      // molestar con un error si solo falló marcarlo como visto.
+      if (!valor || e.mensaje) fallo(e);
+    }
+  }
+
+  // --- Rejilla: delegación de eventos -----------------------------------------
+  const grid = $("#grid");
+  if (grid) {
+    grid.addEventListener("click", function (e) {
+      const fav = e.target.closest("[data-fav]");
+      if (fav) return alternarFavorito(fav.dataset.fav);
+      const desc = e.target.closest("[data-descartar]");
+      if (desc) return descartar(desc.dataset.descartar, desc.dataset.valor === "1");
+      const ir = e.target.closest("[data-ir]");
+      if (ir) return marcarVisto(ir.dataset.ir, true);
+      const abrirEl = e.target.closest("[data-abrir]");
+      if (abrirEl) {
+        // Ctrl/Cmd/Mayús + clic en el título: abre el portal directamente.
+        if (abrirEl.matches("a") && (e.ctrlKey || e.metaKey || e.shiftKey)) return marcarVisto(abrirEl.dataset.pisoId, true);
+        e.preventDefault();
+        abrir(abrirEl.closest(".listing").id.slice(5));
+      }
+    });
+    grid.addEventListener("auxclick", function (e) {
+      const a = e.target.closest("a[data-piso-id], a[data-ir]");
+      if (a && e.button === 1) marcarVisto(a.dataset.pisoId || a.dataset.ir, true);
+    });
+  }
+
+  // --- Vista rápida -------------------------------------------------------------
+  const drawer = $("#drawer");
+  let actualId = null;
+  const drawerId = function () { return drawer.open ? actualId : null; };
+  const visibles = function () {
+    return PISOS.filter(function (p) { const t = tarjeta(p.id); return t && !t.hidden; }).map(function (p) { return p.id; });
+  };
+
+  // La vista rápida tiene su propia entrada en el historial (#piso=…): en el
+  // móvil, el gesto de "atrás" la cierra en vez de salir de la página.
+  function abrir(id) {
+    const yaAbierto = drawer.open;
+    actualId = id;
+    pintarDrawer();
+    if (yaAbierto) {
+      history.replaceState({ drawer: true }, "", "#piso=" + id);
+    } else {
+      drawer.showModal();
+      history.pushState({ drawer: true }, "", "#piso=" + id);
+    }
+    $(".drawer__scroll", drawer).scrollTop = 0;
+    ajustarLeerMas();
+  }
+  // "Leer más" solo si el texto está recortado de verdad. Contar caracteres
+  // no basta: una descripción corta con muchos saltos de línea pasaba de las
+  // 8 líneas visibles y el final quedaba oculto sin botón para verlo.
+  function ajustarLeerMas() {
+    const desc = $("#d-descripcion"), leer = $("#d-leer-mas");
+    leer.hidden = !desc.classList.contains("recortada") || desc.scrollHeight <= desc.clientHeight + 1;
+  }
+  drawer.addEventListener("close", function () { if (history.state && history.state.drawer) history.back(); });
+  window.addEventListener("popstate", function () { if (drawer.open && !location.hash.startsWith("#piso=")) drawer.close(); });
+  function cerrarDrawerSi(id) { if (drawerId() === id) drawer.close(); }
+  function mover(delta) {
+    const ids = visibles(), i = ids.indexOf(actualId);
+    if (i < 0) return;
+    const j = i + delta;
+    if (j >= 0 && j < ids.length) abrir(ids[j]);
+  }
+
+  function pintarDrawer() {
+    const p = porId.get(actualId);
+    if (!p) return;
+    const ids = visibles(), i = ids.indexOf(p.id);
+    $("#d-pos").textContent = (i + 1) + " de " + ids.length;
+    $("#d-prev").disabled = i <= 0;
+    $("#d-next").disabled = i >= ids.length - 1;
+
+    const foto = $("#d-foto");
+    foto.replaceChildren();
+    if (p.imagen) {
+      const img = document.createElement("img");
+      img.src = p.imagen;
+      img.alt = "";
+      img.referrerPolicy = "no-referrer";
+      img.onerror = function () { foto.replaceChildren($("#tpl-sin-foto").content.cloneNode(true)); };
+      foto.appendChild(img);
+    } else {
+      foto.appendChild($("#tpl-sin-foto").content.cloneNode(true));
+    }
+    const badges = document.createElement("span");
+    badges.className = "badges";
+    if (!p.disponible) badges.insertAdjacentHTML("beforeend", '<span class="badge badge-retirado">No disponible</span>');
+    if (p.nuevo) badges.insertAdjacentHTML("beforeend", '<span class="badge badge-nuevo">Nuevo</span>');
+    if (p.bajada) badges.insertAdjacentHTML("beforeend", '<span class="badge badge-bajada">' + icono("trend-down") + " −" + euros(p.bajada) + "</span>");
+    if (p.consultado) badges.insertAdjacentHTML("beforeend", '<span class="badge badge-visto">' + icono("eye") + " Visto</span>");
+    foto.appendChild(badges);
+
+    const precio = $("#d-precio");
+    precio.innerHTML = p.precio ? "<strong>" + euros(p.precio) + '</strong><span class="mes">/mes</span>' : "<strong>A consultar</strong>";
+    if (p.bajada) precio.insertAdjacentHTML("beforeend", "<s>" + euros(p.precio_anterior) + "</s>");
+
+    $("#d-titulo").textContent = p.titulo;
+    const lugar = [p.zona, p.ciudad].filter(Boolean).filter(function (v, k, a) { return a.indexOf(v) === k; }).join(", ");
+    $("#d-ubicacion").hidden = !lugar;
+    $("#d-ubicacion span").textContent = lugar;
+
+    const datos = $("#d-datos");
+    datos.replaceChildren();
+    const extra = p.extra || {};
+    [[p.habitaciones, "habitaciones"], [extra.banos, "baños"], [p.m2 && p.m2 + " m²", "superficie"],
+     [p.precio_m2 && String(p.precio_m2).replace(".", ",") + " €", "por m²"], [extra.tipo_portal || p.tipo, "tipo"],
+     [extra.ber && "BER " + extra.ber, "certificado energético"], [extra.particular && "Particular", "sin agencia"],
+     [extra.eircode, "Eircode"]]
+      .forEach(function (d) {
+        if (!d[0]) return;
+        const el = document.createElement("div");
+        el.className = "dato";
+        const b = document.createElement("b"), s = document.createElement("small");
+        b.textContent = d[0];
+        s.textContent = d[1];
+        el.append(b, s);
+        datos.appendChild(el);
+      });
+
+    const desc = $("#d-descripcion"), leer = $("#d-leer-mas");
+    leer.hidden = true;
+    desc.textContent = p.descripcion || "El portal no da descripción para este anuncio.";
+    desc.classList.add("recortada");
+    leer.textContent = "Leer más";
+    if (drawer.open) ajustarLeerMas();
+
+    $("#d-portal").innerHTML = '<span class="portal portal--' + p.portal.replace(".", "-") + '"></span>';
+    $("#d-portal .portal").textContent = "Publicado en " + nombrePortal(p.portal);
+    $("#d-fecha").textContent = "Lo encontramos " + p.fecha_relativa;
+    $("#d-estado").innerHTML = p.disponible
+      ? icono("eye") + "<span>Sigue publicado" + (p.ultima_vista_relativa ? " · comprobado " + p.ultima_vista_relativa : "") + "</span>"
+      : icono("alert") + "<span>Ya no aparece en el portal: puede que se haya alquilado</span>";
+
+    const ir = $("#d-ir");
+    ir.href = p.url;  // ya filtrada en el servidor (_url_segura)
+    $("span", ir).textContent = "Ver en " + nombrePortal(p.portal);
+    $("#d-fav").setAttribute("aria-pressed", p.favorito);
+    $("#d-visto").hidden = !p.consultado;
+
+    const d = $("#d-descartar");
+    const recuperar = VISTA === "descartados";
+    d.innerHTML = icono(recuperar ? "undo" : "ban");
+    d.title = recuperar ? "Recuperar" : "Descartar: no me interesa";
+    d.setAttribute("aria-label", d.title);
+  }
+
+  $("#d-cerrar").addEventListener("click", function () { drawer.close(); });
+  $("#d-prev").addEventListener("click", function () { mover(-1); });
+  $("#d-next").addEventListener("click", function () { mover(1); });
+  $("#d-fav").addEventListener("click", function () { alternarFavorito(actualId); });
+  $("#d-visto").addEventListener("click", function () { marcarVisto(actualId, false); });
+  $("#d-descartar").addEventListener("click", function () { descartar(actualId, VISTA !== "descartados"); });
+  $("#d-ir").addEventListener("click", function () { marcarVisto(actualId, true); });
+  $("#d-leer-mas").addEventListener("click", function () {
+    const desc = $("#d-descripcion"), recortada = desc.classList.toggle("recortada");
+    this.textContent = recortada ? "Leer más" : "Leer menos";
+  });
+  drawer.addEventListener("click", function (e) { if (e.target === drawer) drawer.close(); });
+  document.addEventListener("keydown", function (e) {
+    if (!drawer.open) return;
+    if (e.key === "ArrowLeft") mover(-1);
+    if (e.key === "ArrowRight") mover(1);
+  });
+
+  // --- Filtros --------------------------------------------------------------------
+  const form = $("#filtros");
+  const escritorio = window.matchMedia("(min-width: 961px)");
+  const POR_DEFECTO = { orden_dir: "fecha_recogida_desc" };
+  form.addEventListener("submit", function () {
+    // URLs limpias: fuera los campos vacíos y los que valen lo de por defecto.
+    Array.from(form.elements).forEach(function (el) {
+      if (el.name && (el.value === "" || POR_DEFECTO[el.name] === el.value)) el.disabled = true;
+    });
+  });
+  document.addEventListener("change", function (e) {
+    if (e.target.form !== form || e.target.name === "q") return;
+    // En el escritorio se aplica al momento; en la hoja del móvil se espera
+    // al botón "Ver resultados" (salvo el orden, que está fuera de la hoja).
+    if (escritorio.matches || e.target.name === "orden_dir") form.requestSubmit();
+  });
+  const buscador = $('input[name="q"]');
+  buscador.addEventListener("search", function () { if (buscador.value === "") form.requestSubmit(); });
+
+  const abrirFiltros = function () { document.body.classList.add("filtros-abiertos"); };
+  const cerrarFiltros = function () { document.body.classList.remove("filtros-abiertos"); };
+  document.querySelectorAll("[data-abrir-filtros]").forEach(function (b) { b.addEventListener("click", abrirFiltros); });
+  document.querySelectorAll("[data-cerrar-filtros]").forEach(function (b) { b.addEventListener("click", cerrarFiltros); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") cerrarFiltros(); });
+  // Enlaces directos: #piso=<id> abre su vista rápida, #filtros el panel.
+  if (location.hash.startsWith("#piso=")) {
+    const id = location.hash.slice(6);
+    history.replaceState(null, "", location.pathname + location.search);
+    if (porId.has(id)) abrir(id);
+  } else if (location.hash === "#filtros") {
+    abrirFiltros();
+  }
+  window.addEventListener("pageshow", function () {
+    // Al volver con "atrás", el navegador puede restaurar campos deshabilitados.
+    Array.from(form.elements).forEach(function (el) { el.disabled = false; });
+  });
+})();
+</script>
+{% endblock %}

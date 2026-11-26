@@ -1,0 +1,8 @@
+.env
+venv/
+__pycache__/
+*.db
+*.db-*
+webapp.log
+cron.log
+*.db.respaldo-*
